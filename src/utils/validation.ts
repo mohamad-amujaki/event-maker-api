@@ -1,5 +1,5 @@
 import type { title } from "process";
-import { z } from "zod";
+import { email, z } from "zod";
 
 export const createEventSchema = z.object({
   title: z.string().min(1),
@@ -10,4 +10,6 @@ export const createEventSchema = z.object({
 
 export const createParticipantSchema = z.object({
   name: z.string().min(1),
+  email: z.email(),
+  eventId: z.number(),
 });

@@ -14,9 +14,11 @@ const eventRouter = new Hono();
 eventRouter.get("/", async (c) => {
   try {
     const events = await getEvents();
+    const message =
+      events.length === 0 ? "Belum ada event" : "Daftar event ditemukan";
     return c.json({
       success: true,
-      message: "Daftar event ditemukan",
+      message,
       count: events.length,
       data: events,
     });
