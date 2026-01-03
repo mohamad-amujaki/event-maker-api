@@ -1,21 +1,19 @@
-import { prisma } from "./../../utils/prisma.js";
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { createEventSchema } from "../../utils/validation.js";
-import { fromZonedTime } from "date-fns-tz";
+import {
+  getEvents,
+  getEventById,
+  createEvent,
+  updateEvent,
+  deleteEvent,
+} from "./service.js";
 
 const eventRouter = new Hono();
 
 eventRouter.get("/", async (c) => {
   try {
-    const events = await prisma.event.findMany({
-      include: {
-        participants: {
-          select: { name: true, email: true },
-        },
-      },
-    });
-
+    const events = await getEvents();
     return c.json({
       success: true,
       message: "Daftar event ditemukan",
@@ -31,26 +29,12 @@ eventRouter.get("/", async (c) => {
       },
       500
     );
-  } finally {
-    prisma.$disconnect();
   }
 });
 eventRouter.post("/", zValidator("json", createEventSchema), async (c) => {
   const body = c.req.valid("json");
   try {
-    // Parse date as Asia/Jakarta timezone and convert to UTC for storage
-    const date = fromZonedTime(body.date, "Asia/Jakarta");
-    if (isNaN(date.getTime())) {
-      return c.json({ message: "Invalid date format" }, 400);
-    }
-    const event = await prisma.event.create({
-      data: {
-        title: body.title,
-        description: body.description,
-        date: date,
-        location: body.location,
-      },
-    });
+    const event = await createEvent(body);
     return c.json(
       {
         success: true,
@@ -60,6 +44,9 @@ eventRouter.post("/", zValidator("json", createEventSchema), async (c) => {
       201
     );
   } catch (error) {
+    if ((error as Error).message === "Invalid date format") {
+      return c.json({ message: "Invalid date format" }, 400);
+    }
     return c.json(
       {
         success: false,
@@ -69,8 +56,6 @@ eventRouter.post("/", zValidator("json", createEventSchema), async (c) => {
       },
       500
     );
-  } finally {
-    prisma.$disconnect();
   }
 });
 
@@ -80,9 +65,7 @@ eventRouter.get("/:id", async (c) => {
     if (isNaN(id)) {
       return c.json({ message: "Id event tidak valid" }, 400);
     }
-    const event = await prisma.event.findUnique({
-      where: { id },
-    });
+    const event = await getEventById(id);
     if (!event) {
       return c.json({ message: "Data detail event tidak ditemukan" }, 404);
     }
@@ -97,8 +80,6 @@ eventRouter.get("/:id", async (c) => {
       },
       500
     );
-  } finally {
-    prisma.$disconnect();
   }
 });
 
@@ -106,50 +87,36 @@ eventRouter.patch("/:id", async (c) => {
   try {
     const id = Number(c.req.param("id"));
     const { title, description, date, location } = await c.req.json();
-    const event = await prisma.event.update({
-      where: { id },
-      data: {
-        ...(title && { title }),
-        ...(description && { description }),
-        ...(date && { date }),
-        ...(location && { location }),
-      },
-      include: {
-        participants: {
-          select: { name: true },
-        },
-      },
-    });
-
+    const event = await updateEvent(id, { title, description, date, location });
     return c.json({
       success: true,
       message: "Event berhasil diupdate",
       data: event,
     });
   } catch (error) {
+    if ((error as Error).message === "Invalid date format") {
+      return c.json({ message: "Invalid date format" }, 400);
+    }
     return c.json({
       success: false,
       message: "Event gagal didata",
       data: [],
       error,
     });
-  } finally {
-    prisma.$disconnect();
   }
 });
 
 eventRouter.delete("/:id", async (c) => {
   try {
     const id = Number(c.req.param("id"));
-    const event = await prisma.event.delete({ where: { id } });
-
+    const event = await deleteEvent(id);
     return c.json({
       success: true,
       message: "Event berhasil dihapus",
       data: event,
     });
   } catch (error) {
-    if (error) {
+    if ((error as any).code === "P2025") {
       return c.json(
         {
           success: false,
@@ -158,9 +125,14 @@ eventRouter.delete("/:id", async (c) => {
         404
       );
     }
-    throw error;
-  } finally {
-    prisma.$disconnect();
+    return c.json(
+      {
+        success: false,
+        message: "Terjadi kesalahan",
+        error,
+      },
+      500
+    );
   }
 });
 export default eventRouter;
